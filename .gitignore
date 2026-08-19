@@ -1,0 +1,26 @@
+# Python
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.venv/
+backend/venv/
+backend/.pytest_cache/
+backend/*.egg-info/
+.env
+backend/.env
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+
+# Local TLS-interception CA (machine-specific, see certs/README.md)
+backend/certs/*.crt
+frontend/certs/*.crt
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db

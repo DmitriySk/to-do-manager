@@ -1,122 +1,229 @@
-Personal To-Do Manager 
-Task: Create a full-stack web app using Claude Code. 
-Goal: Deliver a working MVP that demonstrates end-to-end product implementation (frontend + backend + persistence + tests) with Claude Code assistance. Developer chooses stack, database, UI library, and hosting approach (local run is required) 
-Business scenario: A user manages personal work across multiple projects and wants a simple system to plan tasks, set priorities and deadlines, and quickly see what requires attention today and this week. 
- 
-1) Core rules 
-The system supports multiple users 
-Each user sees only their own data 
-There is no sharing of any kind (no invites, no public links, no shared lists) 
- 
-2) Functional requirements 
-2.1 Authentication and accounts (SSO only) 
-User authentication must be implemented via SSO 
-The app must support both providers 
-Google OAuth (OpenID Connect) 
-GitHub OAuth 
-The app must support logout 
-A logged-in user must stay authenticated across page refresh (session or token based) 
-The backend must persist a user profile minimally containing 
-provider (google or github) 
-provider_user_id 
-email (if provided by the provider) 
-display_name 
-avatar_url (optional) 
- 
-2.2 Lists / Projects 
-A user can create a list/project 
-A user can rename a list/project 
-A user can delete a list/project 
-Deleting a list/project must be handled by one approach and documented in README 
-Cascade delete all tasks in the list 
-Block deletion until tasks are removed 
-2.3 Tasks 
-Each task belongs to exactly one list/project and includes the following fields 
-Title 
-Description/notes 
-Status: To Do, In Progress, Done 
-Due date 
-Priority: Low, Medium, High 
-Task operations 
-Create a task in a selected list 
-Edit any task fields 
-Delete a task 
-Change status quickly from the task list view 
-2.4 Search and filters 
-Search tasks by title and description 
-Filter tasks by status 
-Filter tasks by priority 
-Filter tasks by due date category: overdue, today, next 7 days, all 
- 
-      2.5 Real-time communication (WebSocket notifications) 
-      The app must include two-way communication using WebSocket 
-      Server → client notifications 
-When the user is connected, the backend must push task notifications over WebSocket 
-Notification types must include at least 
-Overdue tasks (status is not Done and due date is before today) 
-Due soon tasks (status is not Done and due date is within the next 3 days, inclusive) 
-The client must display notifications in the UI (toast, banner, or a notification panel) 
-Client → server messages (required to make it truly two-way) 
-The client must send at least one meaningful WebSocket message, for example 
-subscribe message after connection with user preferences like interval or enabled types 
-ack message to mark a notification as read 
-The chosen message(s) must be documented in README together with the message format 
-Scheduling rule 
-On WebSocket connect, server sends an initial notification batch 
-While connected, server repeats the check periodically (developer chooses interval and documents it) 
- 
-3) UI requirements  (modern, styled, responsive, interactive) 
-Authentication screen includes “Continue with Google” and “Continue with GitHub” 
-Main layout with a left area for lists/projects and a main area for tasks 
-Task list view for the selected list 
-Task create and edit UI (modal, drawer, or separate page is acceptable) 
-Search input and filter controls accessible from the task list view 
-Notifications UI visible while connected to WebSocket 
-Responsive behavior for narrow screens (sidebar collapses or becomes a menu) 
-To make “modern and styled” checkable, the UI must include 
-Consistent spacing and typography across screens 
-Visible hover and focus states for interactive elements 
-Clear empty states for lists with no tasks and for search with no results 
-Loading state for at least one main screen or data block 
-Client-side form validation feedback for task create/edit 
- 
-4) Backend requirements 
-Provide a REST API (or equivalent HTTP API) that supports the UI flows 
-Enforce authorization on every list/task operation 
-Enforce authorization on WebSocket connections and notifications 
-Validate inputs and return clear errors for invalid requests 
-Implement SSO OAuth flows securely and document environment variables required for Google and GitHub providers 
- 
-5) Data requirements 
-Persist data in a database chosen by the developer 
-Provide a simple way to start with sample data (seed script or “create sample data” endpoint or documented manual steps) 
- 
-6) Quality requirements 
-Automated tests must cover at least these cases 
-SSO login success path in test mode using a mock or stub provider response 
-A user can create a list and a task 
-A user cannot access another user’s list/tasks (authorization test) 
-WebSocket notifications are sent for overdue or due soon tasks (can be tested via an in-memory WS client or mocked clock) 
- 
-7) Deliverables 
-Source code in a GitLab repository 
-README with local run instructions for backend and frontend 
-README section describing 
-how to configure Google OAuth credentials 
-how to configure GitHub OAuth credentials 
-WebSocket message formats and notification rules 
-Short API description (OpenAPI, Postman collection, or README section) 
-Test command documented and runnable 
-Optional deliverable 
-Containerization (Dockerfile and or docker-compose) 
-If containerization is not possible on the developer machine, it can be skipped and noted in README 
- 
-8)  Acceptance checklist 
-A new user can log in with Google and GitHub 
-A user can create lists, create tasks, and use search/filters 
-Data is private per user and cannot be accessed cross-account 
-While connected, the app receives real-time notifications for overdue and due soon tasks 
-The WebSocket flow includes at least one client→server message that changes server behavior (subscribe or ack) 
-Tests pass locally 
-README is sufficient for another developer to run the app without guessing
+# Personal To-Do Manager
 
+A full-stack multi-user to-do manager. Each user signs in with Google or GitHub SSO and manages their own private lists/projects and tasks, with search, filters, and real-time WebSocket notifications for overdue and due-soon tasks.
+
+**Business scenario:** a user manages personal work across multiple projects and wants a simple system to plan tasks, set priorities and deadlines, and quickly see what requires attention today and this week.
+
+**Core rules:** the system supports multiple users, each user sees only their own data, and there is no sharing of any kind (no invites, no public links, no shared lists).
+
+## Tech stack
+
+| Layer     | Choice |
+| --------- | ------ |
+| Frontend  | React 18 + Vite + TypeScript, Material UI (MUI) v6, TanStack React Query |
+| Backend   | Python 3.12, FastAPI, SQLAlchemy 2.0 (async) + Alembic |
+| Database  | PostgreSQL 16 |
+| Auth      | OAuth2/OIDC via Authlib (Google + GitHub), httpOnly signed session cookie |
+| Real-time | Native WebSocket (`GET /ws`), no extra broker |
+
+## Architecture
+
+```
+/backend    FastAPI app, SQLAlchemy models, Alembic migrations, pytest suite
+/frontend   React + Vite SPA
+docker-compose.yml   Postgres + backend always on; frontend only with the "full" profile
+```
+
+## Prerequisites
+
+- Python 3.12+
+- Node.js 18+
+- PostgreSQL 16 (local install) **or** Docker Desktop
+
+## Local run
+
+There are three supported ways to run the app locally. All three assume you've filled in OAuth credentials as described in [OAuth setup](#oauth-setup).
+
+### Option A — everything natively (no Docker)
+
+```bash
+# 1. Start Postgres yourself and create two databases: todo, todo_test
+
+# 2. Backend
+cd backend
+cp .env.example .env        # fill in DATABASE_URL, OAuth secrets, SESSION_SECRET
+pip install -r requirements.txt
+alembic upgrade head
+uvicorn app.main:app --reload --port 8000
+
+# 3. Frontend (in a second terminal)
+cd frontend
+cp .env.example .env
+npm install
+npm run dev
+```
+
+Frontend: http://localhost:5173 · Backend: http://localhost:8000 · API docs: http://localhost:8000/docs
+
+### Option B — Docker for Postgres + backend, frontend on the host
+
+```bash
+cd backend && cp .env.example .env   # fill in OAuth secrets, SESSION_SECRET
+cd ..
+docker-compose up                     # starts postgres (5432) + backend (8000)
+
+# in a second terminal
+cd frontend
+cp .env.example .env
+npm install
+npm run dev                           # frontend on 5173, talks to backend on 8000
+```
+
+### Option C — everything in Docker
+
+```bash
+cd backend && cp .env.example .env   # fill in OAuth secrets, SESSION_SECRET
+cd ..
+docker-compose --profile full up     # starts postgres (5432) + backend (8000) + frontend (5173)
+```
+
+In every option the frontend is served on `http://localhost:5173` and the backend on `http://localhost:8000` — OAuth redirect URIs are the same regardless of which option you pick.
+
+### If a Docker build fails with a certificate error
+
+`pip install`/`npm install` inside a container fail with `CERTIFICATE_VERIFY_FAILED` on machines where local antivirus or a corporate proxy intercepts TLS (their root CA is trusted by the host but not by a fresh container). Fix:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/export-local-ca.ps1
+docker compose build --no-cache backend
+docker compose --profile full build --no-cache frontend
+```
+
+See `backend/certs/README.md` for details. The exported certificate is machine-specific and git-ignored — it never leaves your machine.
+
+## OAuth setup
+
+The backend needs one set of credentials per provider, both pointing at `http://localhost:8000`.
+
+### Google OAuth
+
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → create/select a project.
+2. Configure the OAuth consent screen (External, testing mode is fine for local dev).
+3. Create an **OAuth client ID** → Application type: **Web application**.
+4. Authorized redirect URI: `http://localhost:8000/auth/callback/google`
+5. Copy the **Client ID** and **Client Secret** into `backend/.env` as `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`.
+
+### GitHub OAuth
+
+1. Go to [GitHub → Settings → Developer settings → OAuth Apps](https://github.com/settings/developers) → **New OAuth App**.
+2. Homepage URL: `http://localhost:5173`
+3. Authorization callback URL: `http://localhost:8000/auth/callback/github`
+4. Copy the **Client ID** and generate a **Client Secret** into `backend/.env` as `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`.
+
+## List deletion policy
+
+Deleting a list/project **cascades**: it deletes the list and all tasks inside it in one step (enforced both at the database level via `ON DELETE CASCADE` and in the API). This was chosen over "block deletion until empty" for a simpler UX — the UI shows a confirmation dialog stating how many tasks will be removed before the delete happens.
+
+## WebSocket protocol
+
+**Endpoint:** `GET /ws` (same origin as the REST API, e.g. `ws://localhost:8000/ws`)
+
+**Authentication:** the same httpOnly session cookie used by the REST API is sent automatically on the WebSocket handshake. If the cookie is missing or invalid, the server closes the connection with code `4401` before accepting it.
+
+**Notification rules:**
+- `overdue` — task status is not `done` **and** `due_date < today`
+- `due_soon` — task status is not `done` **and** `due_date` is within the next 3 days (inclusive of today)
+
+**Scheduling:** on connect, the server immediately sends an initial notification batch. While connected, it re-checks and re-sends periodically. The default interval is **30 seconds**, overridable per-connection via a `subscribe` message, clamped server-side to **10–300 seconds**.
+
+### Server → client messages
+
+Notification batch (sent immediately on connect, then every interval):
+```json
+{
+  "type": "notification_batch",
+  "generated_at": "2026-08-19T12:00:00Z",
+  "notifications": [
+    {
+      "id": "overdue:42",
+      "task_id": 42,
+      "list_id": 7,
+      "kind": "overdue",
+      "title": "Submit report",
+      "due_date": "2026-08-15",
+      "priority": "high"
+    }
+  ]
+}
+```
+
+Acknowledgement of a `subscribe` message:
+```json
+{ "type": "subscribed", "interval_seconds": 30, "enabled_types": ["overdue", "due_soon"] }
+```
+
+### Client → server messages
+
+`subscribe` — sent once after the connection opens, carrying the client's preferences. This **changes server behavior**: it updates the check interval and which notification kinds this connection receives.
+```json
+{ "type": "subscribe", "interval_seconds": 30, "enabled_types": ["overdue", "due_soon"] }
+```
+
+`ack` — sent when the user dismisses a notification in the UI. This **changes server behavior**: the acknowledged notification is excluded from subsequent batches for the lifetime of that connection (in-memory; does not persist across reconnects).
+```json
+{ "type": "ack", "notification_id": "overdue:42" }
+```
+
+## API overview
+
+Full interactive documentation (OpenAPI/Swagger) is auto-generated at `http://localhost:8000/docs` once the backend is running. Summary:
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| GET | `/auth/login/{google\|github}` | Start OAuth login |
+| GET | `/auth/callback/{google\|github}` | OAuth callback, sets session cookie |
+| POST | `/auth/logout` | Clear session |
+| GET | `/auth/me` | Current user, or 401 |
+| POST | `/auth/test-login` | Mock SSO login for tests (only when `ENABLE_TEST_AUTH=true`) |
+| GET | `/api/lists` | List the current user's lists |
+| POST | `/api/lists` | Create a list |
+| PATCH | `/api/lists/{id}` | Rename a list |
+| DELETE | `/api/lists/{id}` | Delete a list (cascades tasks) |
+| GET | `/api/tasks` | List tasks — query params: `list_id`, `status`, `priority`, `due_category` (`overdue\|today\|next_7_days\|all`), `q` (search title/description) |
+| POST | `/api/tasks` | Create a task |
+| GET | `/api/tasks/{id}` | Get one task |
+| PATCH | `/api/tasks/{id}` | Update any task field, including quick status change |
+| DELETE | `/api/tasks/{id}` | Delete a task |
+| POST | `/api/dev/seed` | Create sample lists/tasks for the current user (only when `ENABLE_DEV_ENDPOINTS=true`) |
+| GET | `/ws` | WebSocket notifications, see above |
+
+Every list/task endpoint is scoped to the authenticated user; requests against another user's resources return `404`.
+
+## Sample data
+
+Two ways to seed sample data (lists + tasks, including deliberately overdue/due-soon ones so notifications show up immediately):
+
+- **Via API:** log in, then `POST http://localhost:8000/api/dev/seed` (e.g. `curl -b cookies.txt -X POST http://localhost:8000/api/dev/seed`, or call it from `/docs`). Enabled by default locally (`ENABLE_DEV_ENDPOINTS=true`).
+- **Via script:** `cd backend && python seed.py <provider> <provider_user_id>`, e.g. `python seed.py google local-dev-user`. Creates the user if it doesn't exist yet — useful before you've logged in through the UI once.
+
+## Running tests
+
+```bash
+cd backend
+pip install -r requirements.txt   # if not already installed
+# ensure DATABASE_URL_TEST in .env points at a reachable Postgres database
+pytest -v
+```
+
+The test database's schema is created and dropped automatically by the test suite (`tests/conftest.py`); it does not use Alembic migrations. Tests cover:
+
+- **`test_auth.py`** — SSO login success path via the `/auth/test-login` mock/stub provider endpoint.
+- **`test_lists_tasks.py`** — a user can create a list, create a task in it, filter and search tasks, and cascade-delete a list.
+- **`test_authorization.py`** — a user cannot read, edit, or delete another user's lists or tasks (404 on every attempt).
+- **`test_websocket_notifications.py`** — overdue/due-soon notifications are computed correctly against a frozen clock, the initial WebSocket batch reflects them, `subscribe` changes server-side connection state, and `ack` excludes a notification.
+
+## Known limitations
+
+- WebSocket `ack` state is in-memory per connection and does not persist across reconnects.
+- The session cookie is not marked `Secure` by default (suitable for local HTTP development only) — set it before deploying over HTTPS.
+- No password/email-based login — SSO only, per the spec.
+
+## Acceptance checklist self-check
+
+- [x] A new user can log in with Google and GitHub
+- [x] A user can create lists, create tasks, and use search/filters
+- [x] Data is private per user and cannot be accessed cross-account
+- [x] While connected, the app receives real-time notifications for overdue and due-soon tasks
+- [x] The WebSocket flow includes client→server messages (`subscribe`, `ack`) that change server behavior
+- [x] Tests pass locally (`pytest -v`)
+- [x] This README documents local run, OAuth setup, WebSocket protocol, API, and test command

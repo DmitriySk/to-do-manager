@@ -1,0 +1,47 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: todo
+      POSTGRES_PASSWORD: todo
+      POSTGRES_DB: todo
+    ports:
+      - "5432:5432"
+    volumes:
+      - todo_postgres_data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U todo"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://todo:todo@postgres:5432/todo
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Only started when the "full" profile is active (docker-compose --profile full up).
+  # In the default mode (docker-compose up), only postgres + backend run, and the
+  # frontend is expected to be started separately on the host via `npm run dev`.
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: http://localhost:8000
+        VITE_WS_URL: ws://localhost:8000/ws
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    profiles: ["full"]
+
+volumes:
+  todo_postgres_data:
